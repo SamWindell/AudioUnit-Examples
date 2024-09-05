@@ -11,85 +11,199 @@
 #import <Foundation/Foundation.h>
 
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
 
 #define EnableCocoaUI !TARGET_OS_IPHONE
 
+void PrintFilePermissions(FILE* stream, const char* path)
+{
+	struct stat fileStat;
 
-static void TestWritingToFolder(FILE *log, const char *test_name, NSSearchPathDirectory type,
-                                NSSearchPathDomainMask domain, const char *subfolder,
-                                const char *hardcoded_path) {
+	if (stat(path, &fileStat) < 0) {
+		fprintf(stream, "Failed to get file status for %s\n", path);
+		return;
+	}
 
-  NSError *error = nil;
-  NSString *full_folder = nil;
+	fprintf(stream, "Permissions for %s: ", path);
 
-  if (hardcoded_path == NULL) {
-    NSURL *url = [[NSFileManager defaultManager] URLForDirectory:type
-                                                        inDomain:domain
-                                               appropriateForURL:nil
-                                                          create:true
-                                                           error:&error];
-    if (url == nil) {
-      fprintf(log, "%s: URLForDirectory failed: %s\n", test_name,
-              [[error localizedDescription] UTF8String]);
-    } else {
-      fprintf(log, "%s: URLForDirectory succeeded %s\n", test_name,
-              [url fileSystemRepresentation]);
-    }
+	// Owner permissions
+	fprintf(stream, (fileStat.st_mode & S_IRUSR) ? "r" : "-");
+	fprintf(stream, (fileStat.st_mode & S_IWUSR) ? "w" : "-");
+	fprintf(stream, (fileStat.st_mode & S_IXUSR) ? "x" : "-");
 
-    full_folder = [NSString stringWithFormat:@"%@/%s", [url path], subfolder];
-  } else {
-    full_folder = [NSString stringWithUTF8String:hardcoded_path];
-  }
+	// Group permissions
+	fprintf(stream, (fileStat.st_mode & S_IRGRP) ? "r" : "-");
+	fprintf(stream, (fileStat.st_mode & S_IWGRP) ? "w" : "-");
+	fprintf(stream, (fileStat.st_mode & S_IXGRP) ? "x" : "-");
 
-  error = nil;
-  if (![[NSFileManager defaultManager] createDirectoryAtPath:full_folder
-                                 withIntermediateDirectories:YES
-                                                  attributes:nil
-                                                       error:&error]) {
-    fprintf(log, "%s: createDirectoryAtPath failed: %s\n", test_name,
-            [[error localizedDescription] UTF8String]);
-  } else {
-    fprintf(log, "%s: createDirectoryAtPath succeeded: %s\n", test_name,
-            [full_folder UTF8String]);
-  }
+	// Others permissions
+	fprintf(stream, (fileStat.st_mode & S_IROTH) ? "r" : "-");
+	fprintf(stream, (fileStat.st_mode & S_IWOTH) ? "w" : "-");
+	fprintf(stream, (fileStat.st_mode & S_IXOTH) ? "x" : "-");
 
-  NSString *full_path =
-      [NSString stringWithFormat:@"%@/test-file", full_folder];
-
-  FILE *file = fopen([full_path fileSystemRepresentation], "w");
-
-  if (file == NULL) {
-    fprintf(log, "%s: write-access is denied: %s\n", test_name,
-            strerror(errno));
-  } else {
-    fprintf(log, "%s: write-access is allowed: %s\n", test_name,
-            [full_path fileSystemRepresentation]);
-    fclose(file);
-
-    remove([full_path fileSystemRepresentation]);
-  }
-
-  fprintf(log, "\n");
+	fprintf(stream, "\n");
 }
 
-static void TestFileLocations(void) {
-  FILE *log = fopen("/Users/sam/Library/Audio/Presets/Apple Sample Code/Filter "
-                    "(Effect AU)/log.txt",
-                    "w");
+struct Options {
+	NSSearchPathDirectory type;
+	NSSearchPathDomainMask domain;
+	const char* subfolder;
 
-  TestWritingToFolder(log, "/Users/Shared/com", {}, {}, NULL,
-                      "/Users/Shared/Apple Sample Code");
-  TestWritingToFolder(log, "User Music/com", NSMusicDirectory, NSUserDomainMask,
-                      "Apple Sample Code", NULL);
-  TestWritingToFolder(log, "User Library/Audio/Presets/com", NSLibraryDirectory,
-                      NSUserDomainMask, "Apple Sample Code", NULL);
-  TestWritingToFolder(log, "Global Application Support /com",
-                      NSApplicationSupportDirectory, NSLocalDomainMask,
-                      "Apple Sample Code", NULL);
-  TestWritingToFolder(log, "Global Presets", NSLibraryDirectory,
-                      NSLocalDomainMask, "Audio/Apple Sample Code", NULL);
+	const char* hardcoded_path; // if not NULL this is used instead of the above fields
 
-  fclose(log);
+	bool unmask;
+	int gid;
+};
+
+static void TestWritingToFolder(FILE* log, const char* test_name, Options opts)
+{
+	fprintf(log, "=== %s ===\n", test_name);
+
+	mode_t new_umask, old_umask;
+	if (opts.unmask) {
+		// Set umask to 0000 (no permissions are masked out)
+		new_umask = 0000;             // This will allow full read/write/execute permissions
+		old_umask = umask(new_umask); // Save the old umask and set the new umask
+	}
+
+	NSString* full_folder = nil;
+
+	if (opts.hardcoded_path == NULL) {
+		NSError* error = nil;
+		NSURL* url = [[NSFileManager defaultManager] URLForDirectory:opts.type
+															inDomain:opts.domain
+												   appropriateForURL:nil
+															  create:true
+															   error:&error];
+		if (url == nil) {
+			fprintf(log, "URLForDirectory failed: %s\n", [[error localizedDescription] UTF8String]);
+		} else {
+			fprintf(log, "URLForDirectory succeeded %s\n", [url fileSystemRepresentation]);
+		}
+
+		full_folder = [NSString stringWithFormat:@"%@/%s", [url path], opts.subfolder];
+	} else {
+		full_folder = [NSString stringWithUTF8String:opts.hardcoded_path];
+	}
+
+	// create the folder
+	{
+		NSError* error = nil;
+
+		NSDictionary<NSFileAttributeKey, id>* attributes = nil;
+		if (opts.gid) {
+			attributes = @{NSFileGroupOwnerAccountID : @(opts.gid)};
+		}
+
+		if (![[NSFileManager defaultManager] createDirectoryAtPath:full_folder
+									   withIntermediateDirectories:YES
+														attributes:attributes
+															 error:&error]) {
+			fprintf(log, "createDirectoryAtPath failed: %s\n",
+				[[error localizedDescription] UTF8String]);
+		} else {
+			fprintf(log, "createDirectoryAtPath succeeded: %s\n", [full_folder UTF8String]);
+		}
+		PrintFilePermissions(log, [full_folder fileSystemRepresentation]);
+	}
+
+	NSString* full_path = [NSString stringWithFormat:@"%@/test-file", full_folder];
+
+	// write to a test file in the folder
+	{
+		FILE* file = fopen([full_path fileSystemRepresentation], "w");
+
+		if (file == NULL) {
+			fprintf(log, "write-access is denied: %s\n", strerror(errno));
+		} else {
+			fprintf(log, "write-access is allowed: %s\n", [full_path fileSystemRepresentation]);
+			PrintFilePermissions(log, [full_path fileSystemRepresentation]);
+			fclose(file);
+
+			remove([full_path fileSystemRepresentation]);
+		}
+	}
+
+	// remove the folder
+	{
+		NSError* error = nil;
+		if (![[NSFileManager defaultManager] removeItemAtPath:full_folder error:&error]) {
+			fprintf(
+				log, "removeItemAtPath failed: %s\n", [[error localizedDescription] UTF8String]);
+		} else {
+			fprintf(log, "removeItemAtPath succeeded: %s\n", [full_folder UTF8String]);
+		}
+	}
+
+	if (opts.unmask) {
+		umask(old_umask); // Restore the old umask
+	}
+
+	fprintf(log, "\n");
+}
+
+
+static void TestFileLocations(void)
+{
+	FILE* log = fopen("/Users/sam/Library/Audio/Presets/Apple Sample Code/Filter "
+					  "(Effect AU)/log.txt",
+		"w");
+
+	TestWritingToFolder(log, "Global: Shared",
+		{
+			.hardcoded_path = "/Users/Shared/Apple Sample Code",
+		});
+
+	TestWritingToFolder(log, "Global: Shared (unmask)",
+		{
+			.hardcoded_path = "/Users/Shared/Apple Sample Code",
+			.unmask = true,
+		});
+
+	TestWritingToFolder(log, "Global: Shared (gid 20)",
+		{
+			.hardcoded_path = "/Users/Shared/Apple Sample Code",
+			.gid = 20,
+		});
+
+	TestWritingToFolder(log, "Global: Shared (gid 80)",
+		{
+			.hardcoded_path = "/Users/Shared/Apple Sample Code",
+			.gid = 80,
+		});
+
+
+	TestWritingToFolder(log, "User: Music",
+		{
+			.type = NSMusicDirectory,
+			.domain = NSUserDomainMask,
+			.subfolder = "Apple Sample Code",
+		});
+
+	TestWritingToFolder(log, "User: Library",
+		{
+			.type = NSLibraryDirectory,
+			.domain = NSUserDomainMask,
+			.subfolder = "Apple Sample Code",
+		});
+
+	TestWritingToFolder(log, "Global: Application Support",
+		{
+			.type = NSApplicationSupportDirectory,
+			.domain = NSLocalDomainMask,
+			.subfolder = "Apple Sample Code",
+		});
+
+	TestWritingToFolder(log, "Global: Library/Audio",
+		{
+			.type = NSLibraryDirectory,
+			.domain = NSLocalDomainMask,
+			.subfolder = "Audio/Apple Sample Code",
+		});
+
+	fclose(log);
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -195,8 +309,8 @@ Filter::Filter(AudioUnit component) : AUEffectBase(component)
 OSStatus Filter::Initialize()
 {
 	OSStatus result = AUEffectBase::Initialize();
-    
-    TestFileLocations();
+
+	TestFileLocations();
 
 	if (result == noErr) {
 		// in case the AU was un-initialized and parameters were changed, the view can now
@@ -304,9 +418,9 @@ OSStatus Filter::GetProperty(
 {
 	if (inScope == kAudioUnitScope_Global) {
 		switch (inID) {
-		// This property allows the host application to find the UI associated with this
-		// AudioUnit
-		//
+			// This property allows the host application to find the UI associated with this
+			// AudioUnit
+			//
 #if EnableCocoaUI
 		case kAudioUnitProperty_CocoaUI: {
 			// Look for a resource in the main bundle by name and type.
@@ -324,7 +438,7 @@ OSStatus Filter::GetProperty(
 										  // the CocoaViewFactory.plist
 				CFSTR("bundle"),          // this is the extension of the cocoa bundle
 				NULL);
-			
+
 			if (bundleURL == NULL)
 				return fnfErr;
 
