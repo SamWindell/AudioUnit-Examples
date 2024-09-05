@@ -8,10 +8,89 @@
 
 #include <AudioToolbox/AudioUnitUtilities.h>
 #include <CoreServices/CoreServices.h>
+#import <Foundation/Foundation.h>
 
 #include <math.h>
 
 #define EnableCocoaUI !TARGET_OS_IPHONE
+
+
+static void TestWritingToFolder(FILE *log, const char *test_name, NSSearchPathDirectory type,
+                                NSSearchPathDomainMask domain, const char *subfolder,
+                                const char *hardcoded_path) {
+
+  NSError *error = nil;
+  NSString *full_folder = nil;
+
+  if (hardcoded_path == NULL) {
+    NSURL *url = [[NSFileManager defaultManager] URLForDirectory:type
+                                                        inDomain:domain
+                                               appropriateForURL:nil
+                                                          create:true
+                                                           error:&error];
+    if (url == nil) {
+      fprintf(log, "%s: URLForDirectory failed: %s\n", test_name,
+              [[error localizedDescription] UTF8String]);
+    } else {
+      fprintf(log, "%s: URLForDirectory succeeded %s\n", test_name,
+              [url fileSystemRepresentation]);
+    }
+
+    full_folder = [NSString stringWithFormat:@"%@/%s", [url path], subfolder];
+  } else {
+    full_folder = [NSString stringWithUTF8String:hardcoded_path];
+  }
+
+  error = nil;
+  if (![[NSFileManager defaultManager] createDirectoryAtPath:full_folder
+                                 withIntermediateDirectories:YES
+                                                  attributes:nil
+                                                       error:&error]) {
+    fprintf(log, "%s: createDirectoryAtPath failed: %s\n", test_name,
+            [[error localizedDescription] UTF8String]);
+  } else {
+    fprintf(log, "%s: createDirectoryAtPath succeeded: %s\n", test_name,
+            [full_folder UTF8String]);
+  }
+
+  NSString *full_path =
+      [NSString stringWithFormat:@"%@/test-file", full_folder];
+
+  FILE *file = fopen([full_path fileSystemRepresentation], "w");
+
+  if (file == NULL) {
+    fprintf(log, "%s: write-access is denied: %s\n", test_name,
+            strerror(errno));
+  } else {
+    fprintf(log, "%s: write-access is allowed: %s\n", test_name,
+            [full_path fileSystemRepresentation]);
+    fclose(file);
+
+    remove([full_path fileSystemRepresentation]);
+  }
+
+  fprintf(log, "\n");
+}
+
+static void TestFileLocations(void) {
+  FILE *log = fopen("/Users/sam/Library/Audio/Presets/Apple Sample Code/Filter "
+                    "(Effect AU)/log.txt",
+                    "w");
+
+  TestWritingToFolder(log, "/Users/Shared/com", {}, {}, NULL,
+                      "/Users/Shared/Apple Sample Code");
+  TestWritingToFolder(log, "User Music/com", NSMusicDirectory, NSUserDomainMask,
+                      "Apple Sample Code", NULL);
+  TestWritingToFolder(log, "User Library/Audio/Presets/com", NSLibraryDirectory,
+                      NSUserDomainMask, "Apple Sample Code", NULL);
+  TestWritingToFolder(log, "Global Application Support /com",
+                      NSApplicationSupportDirectory, NSLocalDomainMask,
+                      "Apple Sample Code", NULL);
+  TestWritingToFolder(log, "Global Presets", NSLibraryDirectory,
+                      NSLocalDomainMask, "Audio/Apple Sample Code", NULL);
+
+  fclose(log);
+}
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #pragma mark ____FilterKernel
@@ -116,6 +195,8 @@ Filter::Filter(AudioUnit component) : AUEffectBase(component)
 OSStatus Filter::Initialize()
 {
 	OSStatus result = AUEffectBase::Initialize();
+    
+    TestFileLocations();
 
 	if (result == noErr) {
 		// in case the AU was un-initialized and parameters were changed, the view can now

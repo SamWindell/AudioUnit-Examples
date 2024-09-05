@@ -243,7 +243,7 @@
 		4C56E7E6080482C100DE6468 /* AppleDemoFilter_GraphView.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = AppleDemoFilter_GraphView.h; sourceTree = "<group>"; };
 		4C56E7E7080482C100DE6468 /* AppleDemoFilter_GraphView.m */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.objc; path = AppleDemoFilter_GraphView.m; sourceTree = "<group>"; };
 		4C56E93A0804AE2C00DE6468 /* Filter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Filter.h; sourceTree = "<group>"; };
-		8BA05A660720730100365D66 /* Filter.cpp */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.cpp.cpp; path = Filter.cpp; sourceTree = "<group>"; };
+		8BA05A660720730100365D66 /* Filter.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 30; path = Filter.cpp; sourceTree = "<group>"; };
 		8BA05A670720730100365D66 /* Filter.exp */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.exports; path = Filter.exp; sourceTree = "<group>"; };
 		8BA05AF9072074E100365D66 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = /System/Library/Frameworks/AudioToolbox.framework; sourceTree = "<absolute>"; };
 		8BA05AFA072074E100365D66 /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = /System/Library/Frameworks/AudioUnit.framework; sourceTree = "<absolute>"; };
