@@ -1,3 +1,5 @@
+# Build using Xcode and then run this script
+
 set -euxo pipefail
 sudo rm -r /Library/Audio/Plug-Ins/Components/Filter.component
 sudo cp -pR /Users/sam/Library/Developer/Xcode/DerivedData/FilterDemo-brelvwupnoivdfdrfwjgzjhzrbbm/Build/Products/Debug/Filter.component /Library/Audio/Plug-Ins/Components/Filter.component
